@@ -13,7 +13,7 @@
     tomcat_home: "/home/{{ app_user }}/tomcat"
     tomcat_port: 9090
     app_context: "petclinic"
-    java21_home: "/home/{{ app_user }}/java/jdk21"
+    java_home: "/home/{{ app_user }}/java/jdk25"  # Using Java 25 to match Tomcat 10 setup
     
   tasks:
     - name: Check if WAR file exists
@@ -43,7 +43,7 @@
 
     - name: Stop Tomcat if running
       shell: |
-        export JAVA_HOME={{ java21_home }}
+        export JAVA_HOME={{ java_home }}
         export PATH=$JAVA_HOME/bin:$PATH
         {{ tomcat_home }}/bin/shutdown.sh
       when: tomcat_status.stdout == "running"
@@ -74,9 +74,9 @@
         remote_src: yes
         mode: '0644'
 
-    - name: Start Tomcat with Java 21
+    - name: Start Tomcat with Java 25
       shell: |
-        export JAVA_HOME={{ java21_home }}
+        export JAVA_HOME={{ java_home }}
         export PATH=$JAVA_HOME/bin:$PATH
         {{ tomcat_home }}/bin/startup.sh
       register: tomcat_start
@@ -87,45 +87,22 @@
         delay: 5
         timeout: 60
 
-    - name: Wait for application deployment
-      pause:
-        seconds: 30
-        prompt: "Waiting for PetClinic to deploy..."
-
-    - name: Check application is accessible
-      uri:
-        url: "http://localhost:{{ tomcat_port }}/{{ app_context }}"
-        status_code: 200
-        timeout: 10
-      register: app_check
-      retries: 10
-      delay: 5
-      until: app_check.status == 200
-
-    - name: Run sanity checks
-      uri:
-        url: "http://localhost:{{ tomcat_port }}/{{ app_context }}/{{ item }}"
-        status_code: 200
-      loop:
-        - ""
-        - "vets.html"
-        - "owners/find"
-      register: sanity_results
-
-    - name: Display deployment results
+    - name: Display deployment summary
       debug:
         msg:
-          - "=========================================="
-          - "✓ PetClinic Deployed Successfully!"
-          - "=========================================="
+          - "╔════════════════════════════════════════════════════════════╗"
+          - "║           ✓ PetClinic Deployment Complete!                ║"
+          - "╚════════════════════════════════════════════════════════════╝"
           - ""
-          - "Application URL: http://localhost:{{ tomcat_port }}/{{ app_context }}"
-          - "Tomcat Port: {{ tomcat_port }}"
-          - "Runtime: Java 21"
+          - "Deployment Details:"
+          - "  WAR File      : {{ war_file }}"
+          - "  Deployed To   : {{ tomcat_home }}/webapps/{{ app_context }}.war"
+          - "  Tomcat Home   : {{ tomcat_home }}"
+          - "  Tomcat Port   : {{ tomcat_port }}"
+          - "  Java Runtime  : Java 25"
+          - "  Application   : http://localhost:{{ tomcat_port }}/{{ app_context }}"
           - ""
-          - "Sanity Checks:"
-          - "  ✓ Home page: OK"
-          - "  ✓ Vets page: OK"
-          - "  ✓ Find owners: OK"
+          - "Next Step:"
+          - "  Run verification: ansible-playbook verify_petclinic.yml"
           - ""
-          - "=========================================="
+          - "╚════════════════════════════════════════════════════════════╝"

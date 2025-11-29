@@ -1,0 +1,117 @@
+---
+################################################################################
+# Playbook: verify_petclinic.yml
+# Description: Run sanity checks and verification tests for PetClinic deployment
+# Usage: ansible-playbook ansible/playbooks/verify_petclinic.yml
+################################################################################
+
+- name: Verify PetClinic Deployment
+  hosts: localhost
+  become: no
+  vars:
+    app_user: "pet-clinic"
+    tomcat_home: "/home/{{ app_user }}/tomcat"
+    tomcat_port: 9090
+    app_context: "petclinic"
+    app_url: "http://localhost:{{ tomcat_port }}/{{ app_context }}"
+    
+  tasks:
+    - name: Wait for application to be ready
+      pause:
+        seconds: 10
+        prompt: "Waiting for application to stabilize..."
+
+    - name: Test home page
+      uri:
+        url: "{{ app_url }}/"
+        status_code: 200
+        timeout: 10
+      register: home_check
+      retries: 3
+      delay: 5
+      until: home_check.status == 200
+      
+    - name: Test vets page
+      uri:
+        url: "{{ app_url }}/vets.html"
+        status_code: 200
+        timeout: 10
+      register: vets_check
+      retries: 3
+      delay: 5
+      until: vets_check.status == 200
+      
+    - name: Test find owners page
+      uri:
+        url: "{{ app_url }}/owners/find"
+        status_code: 200
+        timeout: 10
+      register: owners_check
+      retries: 3
+      delay: 5
+      until: owners_check.status == 200
+
+    - name: Check Tomcat process is running
+      shell: ps aux | grep -v grep | grep catalina
+      register: tomcat_process
+      changed_when: false
+      failed_when: tomcat_process.rc != 0
+      
+    - name: Check Tomcat port is listening
+      wait_for:
+        port: "{{ tomcat_port }}"
+        state: started
+        timeout: 5
+      register: port_check
+
+    - name: Get response time for home page
+      uri:
+        url: "{{ app_url }}/"
+        return_content: no
+      register: response_time_check
+      
+    - name: Display verification results
+      debug:
+        msg:
+          - "╔════════════════════════════════════════════════════════════╗"
+          - "║           ✓ PetClinic Verification SUCCESSFUL              ║"
+          - "╚════════════════════════════════════════════════════════════╝"
+          - ""
+          - "Endpoint Tests:"
+          - "  ✓ Home page       : {{ home_check.status }} - OK"
+          - "  ✓ Vets page       : {{ vets_check.status }} - OK"
+          - "  ✓ Find owners page: {{ owners_check.status }} - OK"
+          - ""
+          - "System Checks:"
+          - "  ✓ Tomcat process  : Running"
+          - "  ✓ Tomcat port     : {{ tomcat_port }} - Listening"
+          - ""
+          - "Application Details:"
+          - "  URL               : {{ app_url }}"
+          - "  Port              : {{ tomcat_port }}"
+          - "  Context           : {{ app_context }}"
+          - ""
+          - "╚════════════════════════════════════════════════════════════╝"
+          
+    - name: Create verification summary file
+      copy:
+        dest: "/home/{{ app_user }}/build/verification-summary.txt"
+        content: |
+          PetClinic Verification Report
+          =============================
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          
+          Endpoint Tests:
+            ✓ Home page        : HTTP {{ home_check.status }}
+            ✓ Vets page        : HTTP {{ vets_check.status }}
+            ✓ Find owners page : HTTP {{ owners_check.status }}
+          
+          System Checks:
+            ✓ Tomcat process   : Running (PID found)
+            ✓ Tomcat port      : {{ tomcat_port }} listening
+          
+          Application URL: {{ app_url }}
+          
+          Status: ALL CHECKS PASSED ✓
+        mode: '0644'
+
